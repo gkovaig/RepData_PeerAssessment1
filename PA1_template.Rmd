@@ -1,20 +1,105 @@
-# Reproducible Research: Peer Assessment 1
+---
+title: "Coursera / JHBSPH - Reproducible Research - Assignment 1"
+author: "Raj Manickam"
+date: "June 12, 2014"
+output: html_document
+---
 
+```{r setoptions, echo = TRUE, fig.height=4, fig.width=4}
+# Use setwd() to set working directory to directory containing this project
+setwd('~/appdev/jhsph/repdata/RepData_PeerAssessment1/')
+library(ggplot2)
+library(dplyr)
+library(data.table)
+library(lubridate)
+# library(Hmisc)
+try(system('unzip -o activity.zip'))
+activity = data.table(read.csv(file = 'activity.csv'))
+```
 
-## Loading and preprocessing the data
+### What is mean and median number of steps taken per day?
 
+```{r}
+activityDaily = activity %.%
+    group_by(date) %.%
+        summarize(steps = sum(steps))
+ggplot(data = activityDaily, aes(x = steps)) +
+    geom_histogram(binwidth = 1000) +
+    labs( title = 'Histogram of Steps Taken Daily')
+stepsDailyMean = mean(activityDaily$steps, na.rm = TRUE)
+stepsDailyMedian = quantile(activityDaily$steps, probs = c(0.5), na.rm = TRUE)
+```
 
+The mean number of steps taken daily during this period is `r stepsDailyMean`.
+The median number of steps taken daily during this period is `r stepsDailyMedian`.
 
-## What is mean total number of steps taken per day?
+### What is the average daily activity pattern?
+```{r}
+ggplot( activity, aes(x = interval) ) + 
+  geom_line( aes( y = steps ) ) +
+  labs( title = 'Steps vs. Time of Day',
+        x = 'Seconds since midnight',
+        y = 'Step Count')
+```
 
+### Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+```{r}
+# find average by interval, then get its max
+activityByInterval = activity %.%
+    group_by(interval) %.%
+    summarize(stepsMean = mean(steps, na.rm = TRUE)) %.%
+    arrange(desc(stepsMean))
+```
+The 5-minute interval in which the the most steps were logged, on average, across all the days in the dataset, is `r activityByInterval$interval[1]`.
 
+### Imputing missing values
+Calculate and report the total number of missing values in the dataset
+(i.e. the total number of rows with NAs)
+```{r}
+goodObs = sum(complete.cases(activity))
+```
+There are `r goodObs` observations which are not missing, out of a total of `r nrow(activity)` rows (`r goodObs/nrow(activity)*100`%).
 
-## What is the average daily activity pattern?
+Strategy for filling in all of the missing values in the dataset:
+    Will use mean for that 5-minute interval from all days in the dataset.
+    If all the values for a certain interval is NA, then use 0.
+```{r}
+# Create a new dataset that is equal to the original dataset but with the missing data filled in.
+activity.1 = merge(activity, activityByInterval, by = c('interval'), all.x = TRUE)
+activity.2 = activity.1[is.na(activity.1$steps)]
+activity.2$steps = activity.2$stepsMean
+activity.3 = rbind(activity.1[!is.na(activity.1$steps)], activity.2)
+```
 
+Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day.
 
+Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
 
-## Imputing missing values
+```{r}
+activityDaily.3 = activity.3 %.%
+    group_by(date) %.%
+        summarize(steps = sum(steps))
+ggplot(data = activityDaily.3, aes(x = steps)) +
+    geom_histogram(binwidth = 1000) +
+    labs( title = 'Histogram of Steps Taken Daily (After Imputing Missing Values')
+stepsDailyMean.3 = mean(activityDaily.3$steps, na.rm = TRUE)
+stepsDailyMedian.3 = quantile(activityDaily.3$steps, probs = c(0.5), na.rm = TRUE)
+```
 
+The mean number of steps taken daily during this period is `r stepsDailyMean`.
+The median number of steps taken daily during this period is `r stepsDailyMedian`.
 
+We notice that the mean number of steps did not change after imputing missing values (as they were imputed based on the mean values).  The median number of steps increased slightly.
 
-## Are there differences in activity patterns between weekdays and weekends?
+### Are there differences in activity patterns between weekdays and weekends?
+```{r}
+activity.3$weekday = factor( weekdays( ymd( activity.3$date)) %in% c( 'Monday','Tuesday','Wednesday','Thursday','Friday'), labels = c('Weekend', 'Weekday'))
+ggplot( activity.3, aes(x = interval) ) + 
+  geom_line( aes( y = steps ) ) +
+  labs( title = 'Steps vs. Time of Day',
+        x = 'Seconds since midnight',
+        y = 'Step Count') +
+    facet_grid(weekday ~ .)
+```
+
+We notice that there is a distinct shift in pattern of activity over the weekend, compared to the weekdays.  The person starts being 'Active' about two hours later (sleeps in late?), and is more active in the afternoon and evening.
